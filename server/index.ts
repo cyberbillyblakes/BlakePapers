@@ -280,48 +280,36 @@ export async function createServer() {
       message: "PDF generation route working",
       id: req.params.id,
       timestamp: new Date().toISOString(),
-      bodyKeys: Object.keys(req.body || {})
+      bodyKeys: Object.keys(req.body || {}),
     });
   });
 
-  // Admin PDF template management routes
-  app.get("/api/admin/pdf-templates", handleAdminPDFTemplates);
-  app.post(
-    "/api/admin/pdf-template-association",
-    handleSetPDFTemplateAssociation,
-  );
-
-  // Admin Form Management routes (admin only)
-  app.get("/api/admin/pdf-files", ...adminFormRoutes.getPdfFiles);
-  app.post("/api/admin/upload-pdf", ...adminFormRoutes.uploadPdf);
-  app.get("/api/admin/signature-position/:formId", ...adminFormRoutes.getSignaturePosition);
-  app.post("/api/admin/pdf-signature-position", ...adminFormRoutes.savePDFSignaturePosition);
-
-  // Email routes
-  app.post("/api/email/send", handleSendEmail);
-  app.post("/api/email/auto-send-form-submission", handleAutoSendFormSubmission);
+  // Admin form management routes (protected)
+  app.use("/api/admin/forms", requireAdmin, adminFormRoutes);
 
   // Demo route
   app.get("/api/demo", handleDemo);
 
-  // Initialize MongoDB sync service and connect (assuming MongoSyncService is properly implemented)
-  await MongoSyncService.connect();
+  // Initialize data from MongoDB (existing jobs, users, form submissions)
+  const { initializeDataFromMongo } = await import("./utils/mongoDataAccess");
+  await initializeDataFromMongo();
 
-  // --- Serve React static files ---
-  app.use(express.static(path.join(__dirname, "../dist/spa")));
+  // Start MongoDB sync service (no static connect method)
+  const syncService = MongoSyncService.getInstance();
+  syncService.startSync(5); // Sync every 5 minutes
 
-  // React SPA fallback for client-side routing
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api")) {
-      return res.status(404).json({ error: "API route not found" });
-    }
-    res.sendFile(path.join(__dirname, "../dist/spa/index.html"), (err) => {
-      if (err) next(err);
-    });
+  // Serve React static files for frontend
+  const reactBuildPath = path.resolve(__dirname, "../react-ui/build");
+  app.use(express.static(reactBuildPath));
+
+  // SPA fallback for React Router
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(reactBuildPath, "index.html"));
   });
 
   return app;
 }
+
 
 // Start the server if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
