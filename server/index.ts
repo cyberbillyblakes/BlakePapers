@@ -1,5 +1,8 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
+import multer from "multer";
+
 import { handleDemo } from "./routes/demo";
 import {
   handleLogin,
@@ -79,10 +82,6 @@ import {
   handleGetAllSalaries,
   handleDeleteUserSalary,
 } from "./routes/salary";
-import multer from "multer";
-
-// Multer setup for form data parsing
-const upload = multer();
 import {
   handleSubmitSignature,
   handleGetSignatures,
@@ -107,6 +106,9 @@ import {
 import { handleJobCompiledPDF } from "./routes/compiled-pdf";
 import { adminFormRoutes, requireAdmin } from "./routes/adminFormManagement";
 import MongoSyncService from "./services/mongoSync";
+
+// Multer setup for form data parsing
+const upload = multer();
 
 export async function createServer() {
   const app = express();
@@ -282,7 +284,6 @@ export async function createServer() {
     });
   });
 
-
   // Admin PDF template management routes
   app.get("/api/admin/pdf-templates", handleAdminPDFTemplates);
   app.post(
@@ -295,59 +296,37 @@ export async function createServer() {
   app.post("/api/admin/upload-pdf", ...adminFormRoutes.uploadPdf);
   app.get("/api/admin/signature-position/:formId", ...adminFormRoutes.getSignaturePosition);
   app.post("/api/admin/pdf-signature-position", ...adminFormRoutes.savePDFSignaturePosition);
-  app.get("/api/admin/verify-signature-position/:formType", ...adminFormRoutes.verifySignaturePosition);
-  app.post("/api/admin/rename-pdf", ...adminFormRoutes.renamePdf);
-  app.delete("/api/admin/delete-pdf/:fileName", ...adminFormRoutes.deletePdf);
-  app.get("/api/admin/forms/:formId/variable-mappings", ...adminFormRoutes.getVariableMappings);
-  app.put("/api/admin/forms/:formId/variable-mappings", ...adminFormRoutes.updateVariableMappings);
-  app.post("/api/admin/link-pdf-form", ...adminFormRoutes.linkPdfToForm);
-  app.delete("/api/admin/forms/:formId/unlink-pdf", ...adminFormRoutes.unlinkPdfFromForm);
-  app.get("/api/admin/database-schema", ...adminFormRoutes.getDatabaseSchema);
-
-  // PDF test route for debugging
-  app.get("/api/test-pdf", handleTestPDF);
-
-  // Legacy demo route
-  app.get("/api/demo", handleDemo);
-
-  // MongoDB sync routes
-  app.post("/api/mongo/sync", async (req, res) => {
-    try {
-      const syncService = MongoSyncService.getInstance();
-      await syncService.manualSync();
-      res.json({ success: true, message: "Manual sync completed" });
-    } catch (error) {
-      console.error("Manual sync error:", error);
-      res.status(500).json({ success: false, error: "Sync failed" });
-    }
-  });
-
-  app.get("/api/mongo/status", (req, res) => {
-    const syncService = MongoSyncService.getInstance();
-    const status = syncService.getSyncStatus();
-    res.json(status);
-  });
 
   // Email routes
-  app.post("/api/send-email", handleSendEmail);
-  app.post("/api/send-form-submission", handleAutoSendFormSubmission);
+  app.post("/api/email/send", handleSendEmail);
+  app.post("/api/email/auto-send-form-submission", handleAutoSendFormSubmission);
 
-  // Initialize data from MongoDB - Load existing jobs, users, and form submissions
-  const { initializeDataFromMongo } = await import("./utils/mongoDataAccess");
-  await initializeDataFromMongo();
+  // Demo route
+  app.get("/api/demo", handleDemo);
 
-  // Initialize MongoDB sync service - Keep data in sync
-  const syncService = MongoSyncService.getInstance();
-  syncService.startSync(5); // Sync every 5 minutes
+  // Initialize MongoDB sync service and connect (assuming MongoSyncService is properly implemented)
+  await MongoSyncService.connect();
+
+  // --- Serve React static files ---
+  app.use(express.static(path.join(__dirname, "../dist/spa")));
+
+  // React SPA fallback for client-side routing
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) {
+      return res.status(404).json({ error: "API route not found" });
+    }
+    res.sendFile(path.join(__dirname, "../dist/spa/index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
 
   return app;
 }
 
-// Development server startup
+// Start the server if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   const app = await createServer();
   const port = process.env.PORT || 8080;
-
   app.listen(port, () => {
     console.log(`🚀 Fusion Starter server running on port ${port}`);
     console.log(`📱 Frontend: http://localhost:${port}`);
