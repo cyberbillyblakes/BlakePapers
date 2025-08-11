@@ -7,6 +7,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    allowedHosts: ["blakepapers.onrender.com"], // Add your Render domain here or allowedHosts: "all",
   },
   build: {
     outDir: "dist/spa",
