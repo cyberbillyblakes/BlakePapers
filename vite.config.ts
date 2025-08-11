@@ -2,8 +2,8 @@ import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { createServer } from "./server/index.js";
+import { visualizer } from "rollup-plugin-visualizer";
 
-// https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
@@ -11,8 +11,28 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     outDir: "dist/spa",
+    chunkSizeWarningLimit: 1000, // 1MB warning limit
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes("node_modules")) {
+            if (id.includes("react")) return "vendor-react";
+            if (id.includes("lodash") || id.includes("date-fns")) return "vendor-utils";
+            if (id.includes("@radix-ui")) return "vendor-radix";
+            if (id.includes("recharts")) return "vendor-recharts";
+            return "vendor";
+          }
+        },
+      },
+    },
   },
-  plugins: [react(), expressPlugin()],
+  plugins: [
+    react(),
+    expressPlugin(),
+    ...(mode === "production"
+      ? [visualizer({ open: true, filename: "dist/stats.html" })]
+      : []),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./client"),
@@ -24,11 +44,9 @@ export default defineConfig(({ mode }) => ({
 function expressPlugin(): Plugin {
   return {
     name: "express-plugin",
-    apply: "serve", // Only apply during development (serve mode)
+    apply: "serve", // only dev server
     async configureServer(server) {
       const app = await createServer();
-
-      // Add Express app as middleware to Vite dev server
       server.middlewares.use(app);
     },
   };
